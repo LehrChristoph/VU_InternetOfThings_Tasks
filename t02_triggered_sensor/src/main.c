@@ -7,55 +7,55 @@
 #define SENSOR_TEMPERATURE DT_PATH(soc, i2c_40003000, hts221_5f)
 #define SENSOR_TEMPERATURE_LABEL DT_NODELABEL(hts221)
 
-#define TEMPERATURE_LOWER_THRESHOLD 20
-#define TEMPERATURE_UPPER_THRESHOLD 25
+#define TEMPERATURE_LOWER_THRESHOLD 20.0
+#define TEMPERATURE_UPPER_THRESHOLD 25.0
 
-static int set_window(const struct device *dev, int lower, int upper)
+static struct sensor_value lower_threshold;
+static struct sensor_value upper_threshold;
+
+
+static void set_window(int lower, int upper)
 {
-    // converte lower threshold to celcius and micro celsius
-	struct sensor_value val = {
-		.val1 = lower,
-		.val2 = 0,
-	};
-	int rc = sensor_attr_set(dev, SENSOR_CHAN_AMBIENT_TEMP,
-				                SENSOR_ATTR_LOWER_THRESH, &val);
-	if (rc == 0) {
-        // converte upper threshold to celcius and micro celsius
-		val.val1 = upper,
-		rc = sensor_attr_set(dev, SENSOR_CHAN_AMBIENT_TEMP,
-				                SENSOR_ATTR_UPPER_THRESH, &val);
-	}
-    else{
-        printk("Error val: %d", rc );
-    }
-
-	return rc;
+    // convert lower threshold to celcius and micro celsius
+    sensor_value_from_double(&lower_threshold, lower);
+    sensor_value_from_double(&upper_threshold, upper);
 }
-
 
 static void trigger_handler(const struct device *dev,
 			                struct sensor_trigger *trig)
 {
     struct sensor_value temp;
-	static size_t cnt;
+	static size_t cnt_upper, cnt_lower;
 	int rc;
 
-	++cnt;
-	rc = sensor_sample_fetch(dev);
+	//++cnt;
+	// fetch data from sensor
+    rc = sensor_sample_fetch(dev);
 	if (rc != 0) {
 		printk("sensor_sample_fetch error: %d\n", rc);
 		return;
 	}
+    // retreive from zephyr
 	rc = sensor_channel_get(dev, SENSOR_CHAN_AMBIENT_TEMP, &temp);
 	if (rc != 0) {
 		printk("sensor_channel_get error: %d\n", rc);
 		return;
 	}
 
-	printk("trigger fired %u, temp %g deg C\n", cnt,
+    // micro celsius are ignored when configuring threshhold,
+    // therefore there ignored here to
+    if(temp.val1 < lower_threshold.val1 || 
+        (temp.val1 == lower_threshold.val1 && temp.val2 < lower_threshold.val2))
+    {
+        printk("Lower threshold exceeded %u, temp %g deg C\n", ++cnt_lower,
 	       sensor_value_to_double(&temp));
-	
-    //set_window(dev, TEMPERATURE_LOWER_THRESHOLD, TEMPERATURE_UPPER_THRESHOLD);
+    }
+    else if(temp.val1 > upper_threshold.val1 ||
+            (temp.val1 == upper_threshold.val1 && temp.val2 > upper_threshold.val2))
+    {
+	    printk("Upper threshold exceeded %u, temp %g deg C\n", ++cnt_upper,
+	       sensor_value_to_double(&temp));
+    }
 }
 
 void main() {
@@ -70,13 +70,14 @@ void main() {
 #else
     #error "Node is disabled"
 #endif
-
+    
     if (sensor_device == NULL) {
         /* No such node, or the node does not have status "okay". */
         printk("\nError: no device found.\n");
         return;
     }
 
+    // check if device is fully iniatilized
     if (!device_is_ready(sensor_device)) {
         printk("\nError: Device \"%s\" is not ready; "
             "check the driver initialization logs for errors.\n",
@@ -84,17 +85,12 @@ void main() {
         return;
     }
 
-
-    if(set_window(sensor_device, TEMPERATURE_LOWER_THRESHOLD, TEMPERATURE_UPPER_THRESHOLD))
-    {
-        printk("\nError: Could not set window for Device \"%s\"\n",
-            sensor_device->name);
-        return;
-    }
+    // configure thesholds
+    set_window(TEMPERATURE_LOWER_THRESHOLD, TEMPERATURE_UPPER_THRESHOLD);
 
     // provide upper and lower threshold
     struct sensor_trigger trigger;
-    trigger.type = SENSOR_TRIG_THRESHOLD;
+    trigger.type = SENSOR_TRIG_DATA_READY;
     trigger.chan = SENSOR_CHAN_AMBIENT_TEMP;
     if(sensor_trigger_set(sensor_device, &trigger, trigger_handler))
     {
@@ -105,22 +101,27 @@ void main() {
 
     printk("Found device \"%s\", getting sensor data\n", sensor_device->name);
 
-    struct sensor_value temp_value;
-    int err;
+    //struct sensor_value temp_value;
+    int cnt =0;
     while(true) {
-    err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_AMBIENT_TEMP);
-    if(err){
-        printk("Error when sampling sensor (err: %d)", err);
-    }
+        /*
+        err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_AMBIENT_TEMP);
+        if(err){
+            printk("Error when sampling sensor (err: %d)", err);
+        }
 
-    err = sensor_channel_get(sensor_device, SENSOR_CHAN_AMBIENT_TEMP,
-                                &temp_value);
-    if(err){
-        printk("Error obtaining sensor value (err: %d)", err);
-    }
+        err = sensor_channel_get(sensor_device, SENSOR_CHAN_AMBIENT_TEMP,
+                                    &temp_value);
+        if(err){
+            printk("Error obtaining sensor value (err: %d)", err);
+        }
 
-    printk("Temperature: %f \n",  sensor_value_to_double(&temp_value));
-    k_msleep(1000);
+        printk("Temperature: %f \n",  sensor_value_to_double(&temp_value));
+        */
+
+        k_msleep(500);
+        printk("Iteration %u\n", ++cnt);
+        k_msleep(500);
     }
 
   return;
