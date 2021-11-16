@@ -19,13 +19,14 @@ void main() {
 #else
     #error "Node is disabled"
 #endif
-
+    // check if device exists
     if (sensor_device == NULL) {
         /* No such node, or the node does not have status "okay". */
         printk("\nError: no device found.\n");
         return;
     }
 
+    // check if device is fully initialized
     if (!device_is_ready(sensor_device)) {
         printk("\nError: Device \"%s\" is not ready; "
                 "check the driver initialization logs for errors.\n",
@@ -37,20 +38,23 @@ void main() {
 
     struct sensor_value pressure_value;
     int err;
+    // read out sensor data continously
     while(true) {
-    err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_PRESS);
-    if(err){
-        printk("Error when sampling sensor (err: %d)", err);
-    }
+        // Fetch data from sensor
+        err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_PRESS);
+        if(err){
+            printk("Error when sampling sensor (err: %d)", err);
+        }
 
-    err = sensor_channel_get(sensor_device, SENSOR_CHAN_PRESS,
-                                &pressure_value);
-    if(err){
-        printk("Error obtaining sensor value (err: %d)", err);
-    }
+        // get previously fetched data
+        err = sensor_channel_get(sensor_device, SENSOR_CHAN_PRESS,
+                                    &pressure_value);
+        if(err){
+            printk("Error obtaining sensor value (err: %d)", err);
+        }
 
-    printk("Pressure: %f \n",  sensor_value_to_double(&pressure_value));
-    k_msleep(1000);
+        printk("Pressure: %f \n",  sensor_value_to_double(&pressure_value));
+        k_msleep(1000);
     }
 
     return;
