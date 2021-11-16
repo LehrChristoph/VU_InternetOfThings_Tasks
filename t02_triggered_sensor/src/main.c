@@ -102,19 +102,6 @@ void main() {
     printk("Found device \"%s\", getting sensor data\n", sensor_device->name);
 
     // counting loop, to show some progress     err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_PRESS);
-    if(err){
-        printk("Error when sampling sensor (err: %d)", err);
-    }
-
-    err = sensor_channel_get(sensor_device, SENSOR_CHAN_PRESS,
-                                &pressure_value);
-    if(err){
-        printk("Error obtaining sensor value (err: %d)", err);
-    }
-
-    printk("Pressure: %f \n",  sensor_value_to_double(&pressure_value));
-    k_msleep(1000);
-    
     int cnt =0;
     while(true) {
         k_msleep(500);
