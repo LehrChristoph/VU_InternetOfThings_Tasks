@@ -101,7 +101,7 @@ void main() {
 
     printk("Found device \"%s\", getting sensor data\n", sensor_device->name);
 
-    // counting loop, to show some progress     err = sensor_sample_fetch_chan(sensor_device, SENSOR_CHAN_PRESS);
+    // counting loop, to show some progress
     int cnt =0;
     while(true) {
         k_msleep(500);
