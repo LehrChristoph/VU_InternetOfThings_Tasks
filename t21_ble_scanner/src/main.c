@@ -1,41 +1,132 @@
-#include <zephyr.h>
-#include <device.h>
-#include <devicetree.h>
-#include <drivers/gpio.h>
+/* main.c - Application main entry point */
+
+/*
+ * Copyright (c) 2015-2016 Intel Corporation
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <zephyr/types.h>
+#include <stdio.h>
 #include <stddef.h>
+#include <errno.h>
+#include <zephyr.h>
 #include <sys/printk.h>
-#include <sys/util.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
+#include <bluetooth/conn.h>
+#include <bluetooth/uuid.h>
+#include <bluetooth/gatt.h>
+#include <sys/byteorder.h>
 
-static uint8_t mfg_data[] = { 0xff, 0xff, 0x00 };
+static void start_scan(void);
 
-static const struct bt_data ad[] = {
-	BT_DATA(BT_DATA_MANUFACTURER_DATA, mfg_data, 3),
-};
+static struct bt_conn *default_conn;
 
-static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
-		    struct net_buf_simple *buf)
+static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+			 struct net_buf_simple *ad)
 {
-	mfg_data[2]++;
+	char addr_str[BT_ADDR_LE_STR_LEN];
+	int err;
+
+	if (default_conn) {
+		return;
+	}
+
+	/* We're only interested in connectable events */
+	if (type != BT_GAP_ADV_TYPE_ADV_IND &&
+	    type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
+		return;
+	}
+
+	bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+	printk("Device found: %s (RSSI %d)\n", addr_str, rssi);
+
+	/* connect only to devices in close proximity */
+	if (rssi < -70) {
+		return;
+	}
+
+	if (bt_le_scan_stop()) {
+		return;
+	}
+
+	err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
+				BT_LE_CONN_PARAM_DEFAULT, &default_conn);
+	if (err) {
+		printk("Create conn to %s failed (%u)\n", addr_str, err);
+		start_scan();
+	}
 }
+
+static void start_scan(void)
+{
+	int err;
+
+	/* This demo doesn't require active scan */
+	err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, device_found);
+	if (err) {
+		printk("Scanning failed to start (err %d)\n", err);
+		return;
+	}
+
+	printk("Scanning successfully started\n");
+}
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	if (err) {
+		printk("Failed to connect to %s (%u)\n", addr, err);
+
+		bt_conn_unref(default_conn);
+		default_conn = NULL;
+
+		start_scan();
+		return;
+	}
+
+	if (conn != default_conn) {
+		return;
+	}
+
+	printk("Connected: %s\n", addr);
+
+	start_scan();
+	//bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+}
+
+static void disconnected(struct bt_conn *conn, uint8_t reason)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	if (conn != default_conn) {
+		return;
+	}
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	printk("Disconnected: %s (reason 0x%02x)\n", addr, reason);
+
+	bt_conn_unref(default_conn);
+	default_conn = NULL;
+
+	start_scan();
+}
+
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+	.connected = connected,
+	.disconnected = disconnected,
+};
 
 void main(void)
 {
-    struct bt_le_scan_param scan_param = {
-		.type       = BT_HCI_LE_SCAN_PASSIVE,
-		.options    = BT_LE_SCAN_OPT_NONE,
-		.interval   = 0x0010,
-		.window     = 0x0010,
-	};
 	int err;
 
-	printk("Starting Scanner/Advertiser\n");
-
-	/* Initialize the Bluetooth Subsystem */
 	err = bt_enable(NULL);
 	if (err) {
 		printk("Bluetooth init failed (err %d)\n", err);
@@ -44,25 +135,5 @@ void main(void)
 
 	printk("Bluetooth initialized\n");
 
-	err = bt_le_scan_start(&scan_param, scan_cb);
-	if (err) {
-		printk("Starting scanning failed (err %d)\n", err);
-		return;
-	}
-
-	do {
-		k_sleep(K_MSEC(400));
-
-		/* Start advertising */
-		err = bt_le_adv_start(BT_LE_ADV_NCONN, ad, ARRAY_SIZE(ad), NULL, 0);
-
-		if (err) {
-			printk("Advertising failed to start (err %d)\n", err);
-			return;
-		} else {
-            printk("Started advertising.\n");
-        }	
-
-	} while (1);
-    
+	start_scan();
 }
