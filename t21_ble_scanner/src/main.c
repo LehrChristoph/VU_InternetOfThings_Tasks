@@ -8,10 +8,10 @@
 
 #include <zephyr/types.h>
 #include <stdio.h>
-#include <stddef.h>
-#include <errno.h>
+//#include <stddef.h>
+//#include <errno.h>
 #include <zephyr.h>
-#include <sys/printk.h>
+//#include <sys/printk.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -20,9 +20,165 @@
 #include <bluetooth/gatt.h>
 #include <sys/byteorder.h>
 
+///////////////////////////////////////////////////////////////////////////////
+
 static void start_scan(void);
 
+static uint8_t notify_func(struct bt_conn *conn,
+			   struct bt_gatt_subscribe_params *params,
+			   const void *data, uint16_t length);
+
+uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params, 
+			const void *data, uint16_t length);
+
+void write_temp_range_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_write_params *params);
+
+///////////////////////////////////////////////////////////////////////////////
+
 static struct bt_conn *default_conn;
+
+static struct bt_uuid_16 uuid = BT_UUID_INIT_16(0);
+static struct bt_gatt_discover_params discover_params;
+static struct bt_gatt_subscribe_params subscribe_params;
+static struct bt_gatt_read_params read_temp_params = 
+{
+	// configure read params
+	.func = read_temp_func,
+	.handle_count = 0,
+	.by_uuid.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE,
+	.by_uuid.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE,
+	.by_uuid.uuid = BT_UUID_TEMPERATURE,
+};
+
+static struct temp_range_t
+{
+    double lower;
+    double upper;
+} temp_range;
+
+static struct bt_gatt_write_params write_temp_params = 
+{
+	.func = write_temp_range_func,
+	.data = &temp_range,
+	.length = sizeof(struct temp_range_t),
+	.offset = 0,
+};
+
+static struct bt_conn *conn_device;
+
+///////////////////////////////////////////////////////////////////////////////
+
+// UUID of the service (random)
+static struct bt_uuid_128 service_uuid = BT_UUID_INIT_128(
+    BT_UUID_128_ENCODE(0xb47244dc, 0x4d40, 0x11ec, 0x81d3, 0x0242ac130003));
+
+static uint8_t notify_func(struct bt_conn *conn,
+			   struct bt_gatt_subscribe_params *params,
+			   const void *data, uint16_t length)
+{
+	/*
+	if (!data) {
+		printk("[UNSUBSCRIBED]\n");
+		params->value_handle = 0U;
+		return BT_GATT_ITER_STOP;
+	}
+	*/
+
+	printk("[NOTIFICATION] data %p length %u\n", data, length);
+
+	return BT_GATT_ITER_CONTINUE;
+}
+
+uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params, 
+			const void *data, uint16_t length)
+{
+	if(length >= sizeof(double))
+	{
+		double *test= data;
+		printk("[READ] data %g length %u\n", *test, length);
+	}
+	return BT_GATT_ITER_STOP;
+}
+
+void write_temp_range_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_write_params *params)
+{
+
+}
+
+static uint8_t discover_func(struct bt_conn *conn,
+			     const struct bt_gatt_attr *attr,
+			     struct bt_gatt_discover_params *params)
+{
+	int err;
+
+	if (!attr) {
+		printk("Discover complete\n");
+		(void)memset(params, 0, sizeof(*params));
+		conn_device = conn; 
+		return BT_GATT_ITER_STOP;
+	}
+
+	printk("[ATTRIBUTE] handle %u\n", attr->handle);
+
+	if (!bt_uuid_cmp(discover_params.uuid, &service_uuid.uuid)) {
+		memcpy(&uuid, BT_UUID_TEMPERATURE, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+		printk("Discovered service\n");
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			printk("Discover failed (err %d)\n", err);
+		}
+	} 
+	else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_TEMPERATURE)) {
+		printk("Discovered Temperature\n");
+	
+		subscribe_params.notify = notify_func;
+		subscribe_params.value = BT_GATT_CHRC_NOTIFY;
+		subscribe_params.value_handle = attr->handle;
+
+		err = bt_gatt_subscribe(conn, &subscribe_params);
+		if (err && err != -EALREADY) {
+			printk("Subscribe failed (err %d)\n", err);
+		} else {
+			printk("[SUBSCRIBED]\n");
+		}
+		
+
+		memcpy(&uuid, BT_UUID_VALID_RANGE, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			printk("Discover failed (err %d)\n", err);
+		}
+	} 
+	else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_VALID_RANGE)) 
+	{
+		
+		printk("Discovered Range\n");
+		write_temp_params.handle = attr->handle +1;
+		
+		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
+		discover_params.uuid = &uuid.uuid;
+		discover_params.start_handle = attr->handle + 1;
+		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+				
+		err = bt_gatt_discover(conn, &discover_params);
+		if (err) {
+			printk("Discover failed (err %d)\n", err);
+		}
+		
+	} 
+	
+	return BT_GATT_ITER_STOP;
+}
+
 
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 			 struct net_buf_simple *ad)
@@ -96,7 +252,20 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 	printk("Connected: %s\n", addr);
 
-	start_scan();
+	//memcpy(&uuid, BT_UUID_GATT_PRIMARY, sizeof(uuid));
+	discover_params.uuid = &service_uuid.uuid;
+	discover_params.func = discover_func;
+	discover_params.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
+	discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+	discover_params.type = BT_GATT_DISCOVER_PRIMARY;
+
+	err = bt_gatt_discover(default_conn, &discover_params);
+	if (err) {
+		printk("Discover failed(err %d)\n", err);
+		return;
+	}
+
+	//start_scan();
 	//bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 }
 
@@ -136,4 +305,21 @@ void main(void)
 	printk("Bluetooth initialized\n");
 
 	start_scan();
+
+	while(conn_device == NULL)
+	{
+		k_msleep(1000);
+	}
+	
+	temp_range.lower = 10.0;
+	temp_range.upper = 26.0;
+
+	bt_gatt_write(conn_device, &write_temp_params);
+
+	while(true)
+	{
+		k_msleep(5000);
+		bt_gatt_read(conn_device, &read_temp_params);
+	}
+	
 }

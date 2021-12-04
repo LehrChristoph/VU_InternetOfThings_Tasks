@@ -10,4 +10,5 @@ project(ble_sensor)
 target_include_directories(app PRIVATE inc)
 
 target_sources(app PRIVATE src/sensors.c)
+target_sources(app PRIVATE src/bt_sensor_service.c)
 target_sources(app PRIVATE src/main.c)
