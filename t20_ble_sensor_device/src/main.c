@@ -15,9 +15,13 @@ void main() {
     bt_service_init();
 
     // counting loop, to show some progress
-    int cnt =0;
+    unsigned int interval =0;
+    
     while(true) {
-        k_msleep(1000);
-        sensors_get_current_temperature();    
+        interval = bt_service_get_update_interval();
+        printk("waiting for %u\n", interval);
+        k_msleep(interval);
+        sensors_fetch_temperature_data();    
+
     }
 }

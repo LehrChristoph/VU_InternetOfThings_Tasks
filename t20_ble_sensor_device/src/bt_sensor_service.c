@@ -25,16 +25,12 @@ ssize_t char_range_write_callback(struct bt_conn *conn, const struct bt_gatt_att
 
 ///////////////////////////////////////////////////////////////////////////////
 
+static double current_temp;
 
-static double current_temp; 
-static struct temp_range_t range;
+static unsigned int update_period;
 
 static struct bt_conn *conn_device;
 static const struct bt_gatt_attr *conn_attr;
-
-// UUID of the service (random)
-static struct bt_uuid_128 service_uuid = BT_UUID_INIT_128(
-    BT_UUID_128_ENCODE(0xb47244dc, 0x4d40, 0x11ec, 0x81d3, 0x0242ac130003));
 
 // advertising data (its name)
 static const struct bt_data advertisement[] = {
@@ -49,13 +45,13 @@ static const struct bt_data advertisement[] = {
 // definition of service
 BT_GATT_SERVICE_DEFINE(
     srv,
-    BT_GATT_PRIMARY_SERVICE(&service_uuid),
+    BT_GATT_PRIMARY_SERVICE(BT_UUID_ESS),
 
     // (one characteristic could do both, split just for exercise)
     // read characteristic
     BT_GATT_CHARACTERISTIC(
         BT_UUID_TEMPERATURE,
-        BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+        BT_GATT_CHRC_READ ,
         BT_GATT_PERM_READ,
         char_temp_read_callback,
         NULL,
@@ -64,12 +60,12 @@ BT_GATT_SERVICE_DEFINE(
 
     // write characteristic
     BT_GATT_CHARACTERISTIC(
-        BT_UUID_VALID_RANGE,
+        BT_UUID_ES_TRIGGER_SETTING,
         BT_GATT_CHRC_WRITE,
         BT_GATT_PERM_WRITE,
         NULL,
         char_range_write_callback,
-        &range
+        &update_period
     ),
 );
 
@@ -77,7 +73,7 @@ BT_GATT_SERVICE_DEFINE(
 
 ssize_t char_temp_read_callback(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			void *buf, uint16_t len, uint16_t offset) {
-
+    
     current_temp = sensors_get_current_temperature();
     const double *value = &current_temp;
 
@@ -88,31 +84,26 @@ ssize_t char_temp_read_callback(struct bt_conn *conn, const struct bt_gatt_attr 
     return bt_gatt_attr_read(conn, attr, buf, len, offset, value, sizeof(double));
 }
 
-int bt_service_char_temp_notify(void)
-{
-    
-    printk("notify value: %lf\n", current_temp);
-  
-    return bt_gatt_notify(conn_device, conn_attr, &current_temp, sizeof(current_temp));
-}
-
 ssize_t char_range_write_callback(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			 const void *buf, uint16_t len, uint16_t offset,
 			 uint8_t flags) {
 
-    struct temp_range_t *value = attr->user_data;
+    unsigned int *value = attr->user_data;
 
-    if (offset + len > sizeof(struct temp_range_t)) {
+    if (offset + len > sizeof(update_period)) {
         return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
     }
 
     memcpy(value + offset, buf, len);
-    
-    sensors_temperature_set_notification_range(value);
 
-    printk("write value: %lf - %lf\n", value->lower, value->upper);
+    printk("write value: %u\n", *value);
                  
     return len;
+}
+
+unsigned long bt_service_get_update_interval(void)
+{
+    return update_period;
 }
 
 int bt_service_init(void)
@@ -131,6 +122,8 @@ int bt_service_init(void)
     } else {
         printk("Started advertising.\n");
     }
+
+    update_period = 1000;
 
     return 0;
 }
