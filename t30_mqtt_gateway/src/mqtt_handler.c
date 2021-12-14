@@ -170,7 +170,7 @@ static char *get_mqtt_payload(enum mqtt_qos qos)
 
 static char *get_mqtt_topic(void)
 {
-	return "sensors";
+	return MQTT_TOPIC;
 }
 
 static int publish(struct mqtt_client *client, enum mqtt_qos qos)

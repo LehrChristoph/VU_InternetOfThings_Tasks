@@ -277,5 +277,6 @@ int bt_handler_fetch_data(void)
 
 int bt_handler_set_sampling_interval(unsigned int ms)
 {
+	interval = ms;
 	return bt_gatt_write(conn_device, &write_temp_params);
 }
