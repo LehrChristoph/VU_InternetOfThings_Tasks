@@ -16,5 +16,25 @@ void main(void)
 {
 	wifi_handler_connect(true);
 	bt_handler_init();
-	
+	bt_handler_set_sampling_interval(1000);
+	while(mqtt_handler_connect())
+	{
+		k_msleep(1000);
+	}
+
+	while(true)
+	{
+		if(bt_handler_fetch_data())
+		{
+			break;
+		}
+		if(mqtt_handler_publish())
+		{
+			break;
+		}
+		k_msleep(5000);
+	}
+
+	mqtt_handler_disconnect();
+
 }

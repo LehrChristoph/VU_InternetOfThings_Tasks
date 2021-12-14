@@ -60,7 +60,7 @@ static struct bt_conn *conn_device;
 uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params, 
 			const void *data, uint16_t length)
 {
-	if(length >= sizeof(double))
+	if(length != sizeof(double))
 	{
 		const double *test= data;
 		printk("[READ] data %g length %u\n", *test, length);
@@ -260,31 +260,22 @@ int bt_handler_init(void)
 
 	start_scan();
 	
-	//return 0;
-	
 	while(conn_device == NULL)
 	{
 		k_msleep(1000);
 	}
 	
 	printk("Device connected\n");
-	
-	// cycle through update intervals and read values
-	while(true)
-	{
-	
-		for(uint8_t i=1; i<= 10 ; i++)
-		{
-			interval = i*1000;
-			bt_gatt_write(conn_device, &write_temp_params);
 
-			for(uint8_t j=0; j< 10; j++)
-			{
-				k_msleep(1000);
-				bt_gatt_read(conn_device, &read_temp_params);
-			}
-		}
-
-	}
 	return 0;
+}
+
+int bt_handler_fetch_data(void)
+{
+	return bt_gatt_read(conn_device, &read_temp_params);
+}
+
+int bt_handler_set_sampling_interval(unsigned int ms)
+{
+	return bt_gatt_write(conn_device, &write_temp_params);
 }

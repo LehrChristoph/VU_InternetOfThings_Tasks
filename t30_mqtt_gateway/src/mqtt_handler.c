@@ -15,8 +15,8 @@ LOG_MODULE_REGISTER(net_mqtt_publisher_sample, LOG_LEVEL_DBG);
 #include <string.h>
 #include <errno.h>
 
+#include "handlers.h"
 #include "mqtt_config.h"
-
 ///////////////////////////////////////////////////////////////////////////////
 
 #define APP_BMEM
@@ -25,12 +25,6 @@ LOG_MODULE_REGISTER(net_mqtt_publisher_sample, LOG_LEVEL_DBG);
 /* Buffers for MQTT client. */
 static APP_BMEM uint8_t rx_buffer[APP_MQTT_BUFFER_SIZE];
 static APP_BMEM uint8_t tx_buffer[APP_MQTT_BUFFER_SIZE];
-
-/* Making RX buffer large enough that the full IPv6 packet can fit into it */
-#define MQTT_LIB_WEBSOCKET_RECV_BUF_LEN 1280
-
-/* Websocket needs temporary buffer to store partial packets */
-static APP_BMEM uint8_t temp_ws_rx_buf[MQTT_LIB_WEBSOCKET_RECV_BUF_LEN];
 
 /* The mqtt client struct */
 static APP_BMEM struct mqtt_client client_ctx;
@@ -51,64 +45,15 @@ static APP_BMEM bool connected;
 	LOG_INF("%s: %d <%s>", (func), rc, RC_STR(rc))
 
 #define SUCCESS_OR_EXIT(rc) { if (rc != 0) { return 1; } }
-#define SUCCESS_OR_BREAK(rc) { if (rc != 0) { break; } }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define TLS_SNI_HOSTNAME "localhost"
-#define APP_CA_CERT_TAG 1
-#define APP_PSK_TAG 2
-
-static APP_DMEM sec_tag_t m_sec_tags[] = {
-#if defined(MBEDTLS_X509_CRT_PARSE_C) || defined(CONFIG_NET_SOCKETS_OFFLOAD)
-		APP_CA_CERT_TAG,
-#endif
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED)
-		APP_PSK_TAG,
-#endif
-};
-
-static int tls_init(void)
-{
-	int err = -EINVAL;
-
-#if defined(MBEDTLS_X509_CRT_PARSE_C) || defined(CONFIG_NET_SOCKETS_OFFLOAD)
-	err = tls_credential_add(APP_CA_CERT_TAG, TLS_CREDENTIAL_CA_CERTIFICATE,
-				 ca_certificate, sizeof(ca_certificate));
-	if (err < 0) {
-		LOG_ERR("Failed to register public certificate: %d", err);
-		return err;
-	}
-#endif
-
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED)
-	err = tls_credential_add(APP_PSK_TAG, TLS_CREDENTIAL_PSK,
-				 client_psk, sizeof(client_psk));
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK: %d", err);
-		return err;
-	}
-
-	err = tls_credential_add(APP_PSK_TAG, TLS_CREDENTIAL_PSK_ID,
-				 client_psk_id, sizeof(client_psk_id) - 1);
-	if (err < 0) {
-		LOG_ERR("Failed to register PSK ID: %d", err);
-	}
-#endif
-
-	return err;
-}
 
 static void prepare_fds(struct mqtt_client *client)
 {
 	if (client->transport.type == MQTT_TRANSPORT_NON_SECURE) {
 		fds[0].fd = client->transport.tcp.sock;
 	}
-#if defined(CONFIG_MQTT_LIB_TLS)
-	else if (client->transport.type == MQTT_TRANSPORT_SECURE) {
-		fds[0].fd = client->transport.tls.sock;
-	}
-#endif
 
 	fds[0].events = ZSOCK_POLLIN;
 	nfds = 1;
@@ -209,7 +154,6 @@ void mqtt_evt_handler(struct mqtt_client *const client,
 
 static char *get_mqtt_payload(enum mqtt_qos qos)
 {
-
 	static APP_DMEM char payload[] = "DOORS:OPEN_QoSx";
 
 	payload[strlen(payload) - 1] = '0' + qos;
@@ -241,15 +185,14 @@ static int publish(struct mqtt_client *client, enum mqtt_qos qos)
 }
 
 
+
 static void broker_init(void)
 {
-
 	struct sockaddr_in *broker4 = (struct sockaddr_in *)&broker;
 
 	broker4->sin_family = AF_INET;
 	broker4->sin_port = htons(SERVER_PORT);
 	zsock_inet_pton(AF_INET, SERVER_ADDR, &broker4->sin_addr);
-
 }
 
 static void client_init(struct mqtt_client *client)
@@ -274,24 +217,7 @@ static void client_init(struct mqtt_client *client)
 	client->tx_buf_size = sizeof(tx_buffer);
 
 	/* MQTT transport configuration */
-	client->transport.type = MQTT_TRANSPORT_SECURE_WEBSOCKET;
-
-	struct mqtt_sec_config *tls_config = &client->transport.tls.config;
-
-	tls_config->peer_verify = TLS_PEER_VERIFY_REQUIRED;
-	tls_config->cipher_list = NULL;
-	tls_config->sec_tag_list = m_sec_tags;
-	tls_config->sec_tag_count = ARRAY_SIZE(m_sec_tags);
-	tls_config->hostname = NULL;
-
-	client->transport.type = MQTT_TRANSPORT_NON_SECURE_WEBSOCKET;
-
-	client->transport.websocket.config.host = SERVER_ADDR;
-	client->transport.websocket.config.url = "/mqtt";
-	client->transport.websocket.config.tmp_buf = temp_ws_rx_buf;
-	client->transport.websocket.config.tmp_buf_len =
-						sizeof(temp_ws_rx_buf);
-	client->transport.websocket.timeout = 5 * MSEC_PER_SEC;
+	client->transport.type = MQTT_TRANSPORT_NON_SECURE;
 }
 
 /* In this routine we block until the connected variable is 1 */
@@ -361,43 +287,51 @@ static int process_mqtt_and_sleep(struct mqtt_client *client, int timeout)
 	return 0;
 }
 
-static int publisher(void)
+
+int mqtt_handler_connect(void)
 {
-	int i, rc, r = 0;
-	
-	rc = tls_init();
-	PRINT_RESULT("tls_init", rc);
+	int rc;
 
 	LOG_INF("attempting to connect: ");
 	rc = try_to_connect(&client_ctx);
 	PRINT_RESULT("try_to_connect", rc);
-	SUCCESS_OR_EXIT(rc);
+	return rc;
+}
 
-	i = 0;
-	while (connected) {
-		r = -1;
+int mqtt_handler_publish(void)
+{
+	int rc;
 
-		rc = mqtt_ping(&client_ctx);
-		PRINT_RESULT("mqtt_ping", rc);
-		SUCCESS_OR_BREAK(rc);
-
-		rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
-		SUCCESS_OR_BREAK(rc);
-
-		rc = publish(&client_ctx, MQTT_QOS_0_AT_MOST_ONCE);
-		PRINT_RESULT("mqtt_publish", rc);
-		SUCCESS_OR_BREAK(rc);
-
-		rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
-		SUCCESS_OR_BREAK(rc);
-
-		r = 0;
+	rc = mqtt_ping(&client_ctx);
+	PRINT_RESULT("mqtt_ping", rc);
+	if (rc != 0) 
+	{ 
+		return rc; 
 	}
 
-	rc = mqtt_disconnect(&client_ctx);
+	rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
+	if (rc != 0) 
+	{ 
+		return rc; 
+	}
+
+	rc = publish(&client_ctx, MQTT_QOS_0_AT_MOST_ONCE);
+	if (rc != 0) 
+	{ 
+		return rc; 
+	}
+
+	rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
+
+	return rc;
+}
+
+int mqtt_handler_disconnect()
+{
+	int rc = mqtt_disconnect(&client_ctx);
 	PRINT_RESULT("mqtt_disconnect", rc);
 
 	LOG_INF("Bye!");
 
-	return r;
+	return rc;
 }
