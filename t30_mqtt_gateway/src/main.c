@@ -21,7 +21,7 @@ void main(void)
 	{
 		k_msleep(1000);
 	}
-
+	
 	while(true)
 	{
 		if(bt_handler_fetch_data())
