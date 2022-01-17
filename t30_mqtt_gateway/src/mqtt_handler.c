@@ -55,8 +55,13 @@ static APP_BMEM bool connected;
 #define SUCCESS_OR_EXIT(rc) { if (rc != 0) { return 1; } }
 
 ///////////////////////////////////////////////////////////////////////////////
-static int publish(struct mqtt_client *client, enum mqtt_qos qos, double temp);
 
+bool *send_ref;
+
+void mqtt_set_send(bool *send)
+{
+    send_ref = send;
+}
 
 static void prepare_fds(struct mqtt_client *client)
 {
@@ -173,6 +178,7 @@ void mqtt_evt_handler(struct mqtt_client *const client,
 
         // publish temperature if we receive something on the sub-topic
         // TODO: Publish TEMP
+        *send_ref = true;
 
         break;
 

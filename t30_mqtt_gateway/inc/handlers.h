@@ -14,5 +14,6 @@ void wifi_handler_connect(bool wait_for_connection);
 int mqtt_handler_connect(void);
 int mqtt_handler_publish(double);
 int mqtt_handler_disconnect(void);
+void mqtt_set_send(bool *send);
 
 #endif

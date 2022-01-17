@@ -11,6 +11,7 @@
 #include <zephyr.h>
 
 #include "handlers.h"
+#include "kernel.h"
 
 void main(void)
 {
@@ -21,6 +22,9 @@ void main(void)
 	{
 		k_msleep(1000);
 	}
+
+    bool send = false;
+    mqtt_set_send(&send);
 
 	while(true)
 	{
@@ -33,7 +37,12 @@ void main(void)
 		{
 			break;
 		}
-		k_msleep(10000);
+		/* k_msleep(10000); */
+        uint64_t start = k_uptime_get();
+        while (k_uptime_get() - start < 5000 && !send)
+        {
+        }
+        send = false;
 	}
 
 	mqtt_handler_disconnect();
