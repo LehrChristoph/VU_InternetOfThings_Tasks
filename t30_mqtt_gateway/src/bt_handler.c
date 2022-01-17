@@ -17,11 +17,13 @@
 #include <bluetooth/gatt.h>
 #include <sys/byteorder.h>
 
+double actual_temp;
+
 ///////////////////////////////////////////////////////////////////////////////
 
 static void start_scan(void);
 
-uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params, 
+uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params,
 			const void *data, uint16_t length);
 
 void write_temp_range_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_write_params *params);
@@ -33,7 +35,7 @@ static struct bt_conn *default_conn;
 static struct bt_uuid_16 uuid = BT_UUID_INIT_16(0);
 static struct bt_gatt_discover_params discover_params;
 static struct bt_gatt_subscribe_params subscribe_params;
-static struct bt_gatt_read_params read_temp_params = 
+static struct bt_gatt_read_params read_temp_params =
 {
 	// configure read params
 	.func = read_temp_func,
@@ -45,7 +47,7 @@ static struct bt_gatt_read_params read_temp_params =
 
 static unsigned int interval;
 
-static struct bt_gatt_write_params write_temp_params = 
+static struct bt_gatt_write_params write_temp_params =
 {
 	.func = write_temp_range_func,
 	.data = &interval,
@@ -57,13 +59,20 @@ static struct bt_conn *conn_device;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params, 
+double bt_get_temp()
+{
+    return actual_temp;
+}
+
+uint8_t read_temp_func(struct bt_conn *conn, uint8_t err, struct bt_gatt_read_params *params,
 			const void *data, uint16_t length)
 {
-	if(length != sizeof(double))
+	if(length == sizeof(double))
 	{
 		const double *test= data;
 		printk("[READ] data %g length %u\n", *test, length);
+
+        actual_temp = *test;
 	}
 	return BT_GATT_ITER_STOP;
 }
@@ -83,7 +92,7 @@ static uint8_t discover_func(struct bt_conn *conn,
 	if (!attr) {
 		printk("Discover complete\n");
 		(void)memset(params, 0, sizeof(*params));
-		conn_device = conn; 
+		conn_device = conn;
 		return BT_GATT_ITER_STOP;
 	}
 
@@ -101,7 +110,7 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			printk("Discover failed (err %d)\n", err);
 		}
-	} 
+	}
 	else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_TEMPERATURE)) {
 		printk("Discovered Temperature\n");
 
@@ -114,25 +123,25 @@ static uint8_t discover_func(struct bt_conn *conn,
 		if (err) {
 			printk("Discover failed (err %d)\n", err);
 		}
-	} 
-	else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_ES_TRIGGER_SETTING)) 
+	}
+	else if (!bt_uuid_cmp(discover_params.uuid, BT_UUID_ES_TRIGGER_SETTING))
 	{
-		
+
 		printk("Discovered Range\n");
 		write_temp_params.handle = attr->handle +1;
-		
+
 		memcpy(&uuid, BT_UUID_GATT_CCC, sizeof(uuid));
 		discover_params.uuid = &uuid.uuid;
 		discover_params.start_handle = attr->handle + 1;
 		discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-				
+
 		err = bt_gatt_discover(conn, &discover_params);
 		if (err) {
 			printk("Discover failed (err %d)\n", err);
 		}
-		
-	} 
-	
+
+	}
+
 	return BT_GATT_ITER_STOP;
 }
 
@@ -259,12 +268,12 @@ int bt_handler_init(void)
 	printk("Bluetooth initialized\n");
 
 	start_scan();
-	
+
 	while(conn_device == NULL)
 	{
 		k_msleep(1000);
 	}
-	
+
 	printk("Device connected\n");
 
 	return 0;

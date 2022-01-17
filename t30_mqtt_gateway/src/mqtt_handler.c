@@ -14,6 +14,7 @@ LOG_MODULE_REGISTER(net_mqtt_publisher_sample, LOG_LEVEL_DBG);
 
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 
 #include "handlers.h"
 #include "mqtt_config.h"
@@ -54,6 +55,7 @@ static APP_BMEM bool connected;
 #define SUCCESS_OR_EXIT(rc) { if (rc != 0) { return 1; } }
 
 ///////////////////////////////////////////////////////////////////////////////
+static int publish(struct mqtt_client *client, enum mqtt_qos qos, double temp);
 
 
 static void prepare_fds(struct mqtt_client *client)
@@ -154,16 +156,44 @@ void mqtt_evt_handler(struct mqtt_client *const client,
 		printk("[MQTT]: PINGRESP packet\n");
 		break;
 
+    case MQTT_EVT_PUBLISH:
+        if (evt->result != 0) {
+            printk("[MQTT] Error: PUBLISH error %d\n", evt->result);
+        }
+
+        char buffer[1024];
+        int rc = mqtt_read_publish_payload(client, buffer, sizeof(buffer));
+        if (rc < 0)
+        {
+            printk("[MQTT] Error: failed to read published payload: %d\n", rc);
+        }
+
+        /* printk("[MQTT] Reveived: %s\nPublish Temperature ...\n", buffer); */
+
+        // publish temperature if we receive something on the sub-topic
+        // TODO: Publish TEMP
+
+        break;
+
 	default:
 		break;
 	}
 }
 
-static char *get_mqtt_payload(enum mqtt_qos qos)
+static char *get_mqtt_payload(double temp)
 {
-	static APP_DMEM char payload[] = "DOORS:OPEN_QoSx";
+	// static APP_DMEM char payload[] = "DOORS:OPEN_QoSx";
+	static APP_DMEM char payload[50];
 
-	payload[strlen(payload) - 1] = '0' + qos;
+    if (temp != 0)
+    {
+        snprintf(payload, 50, "Temperature: %f", temp);
+    }
+    else {
+        snprintf(payload, 50, "no temperature value availible");
+    }
+
+	// payload[strlen(payload) - 1] = '0' + qos;
 
 	return payload;
 }
@@ -173,7 +203,28 @@ static char *get_mqtt_topic(void)
 	return MQTT_TOPIC;
 }
 
-static int publish(struct mqtt_client *client, enum mqtt_qos qos)
+static char *get_mqtt_sub_topic(void)
+{
+	return MQTT_SUB_TOPIC;
+}
+
+static int sub_topic(struct mqtt_client *client, enum mqtt_qos qos)
+{
+    struct mqtt_topic topic;
+    topic.qos = qos;
+    topic.topic.utf8 = (uint8_t *)get_mqtt_sub_topic();
+    topic.topic.size = strlen(topic.topic.utf8);
+
+    struct mqtt_subscription_list subscription_list = {
+        .list = &topic,
+        .list_count = 1,
+        .message_id = 1 // ???
+    };
+
+    return mqtt_subscribe(client, &subscription_list);
+}
+
+static int publish(struct mqtt_client *client, enum mqtt_qos qos, double temp)
 {
 	struct mqtt_publish_param param;
 
@@ -181,7 +232,7 @@ static int publish(struct mqtt_client *client, enum mqtt_qos qos)
 	param.message.topic.topic.utf8 = (uint8_t *)get_mqtt_topic();
 	param.message.topic.topic.size =
 			strlen(param.message.topic.topic.utf8);
-	param.message.payload.data = get_mqtt_payload(qos);
+	param.message.payload.data = get_mqtt_payload(temp);
 	param.message.payload.len =
 			strlen(param.message.payload.data);
 	param.message_id = sys_rand32_get();
@@ -250,7 +301,7 @@ static int try_to_connect(struct mqtt_client *client)
 
 		printk("[MQTT]: connecting\n");
 		rc = mqtt_connect(client);
-		
+
 		if (rc != 0) {
 			PRINT_RESULT("mqtt_connect", rc);
 			k_sleep(K_MSEC(APP_SLEEP_MSECS));
@@ -266,6 +317,18 @@ static int try_to_connect(struct mqtt_client *client)
 		if (!connected) {
 			mqtt_abort(client);
 		}
+
+        rc = sub_topic(client, MQTT_QOS_0_AT_MOST_ONCE);
+
+        if (rc != 0) {
+            PRINT_RESULT("sub_topic", rc);
+			k_sleep(K_MSEC(APP_SLEEP_MSECS));
+			continue;
+        }
+        else {
+            printk("[MQTT] Subscribed to topic '%s' with QOS=%d\n",
+                get_mqtt_sub_topic(), MQTT_QOS_0_AT_MOST_ONCE);
+        }
 	}
 
 	if (connected) {
@@ -319,28 +382,28 @@ int mqtt_handler_connect(void)
 	return rc;
 }
 
-int mqtt_handler_publish(void)
+int mqtt_handler_publish(double temp)
 {
 	int rc;
 
 	rc = mqtt_ping(&client_ctx);
 	PRINT_RESULT("mqtt_ping", rc);
-	if (rc != 0) 
-	{ 
-		return rc; 
+	if (rc != 0)
+	{
+		return rc;
 	}
 
 	rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
-	if (rc != 0) 
-	{ 
-		return rc; 
+	if (rc != 0)
+	{
+		return rc;
 	}
 
-	rc = publish(&client_ctx, MQTT_QOS_0_AT_MOST_ONCE);
+	rc = publish(&client_ctx, MQTT_QOS_0_AT_MOST_ONCE, temp);
 	PRINT_RESULT("publish", rc);
-	if (rc != 0) 
-	{ 
-		return rc; 
+	if (rc != 0)
+	{
+		return rc;
 	}
 
 	rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);

@@ -23,4 +23,5 @@
 
 #define MQTT_CLIENTID		"vu_iot_group2_zephyr_esp32"
 #define MQTT_TOPIC  "tuwien_vu_iot/2021W/assignment3/group2/temperature"
+#define MQTT_SUB_TOPIC  "tuwien_vu_iot/2021W/assignment3/group2/temperature_req"
 #endif

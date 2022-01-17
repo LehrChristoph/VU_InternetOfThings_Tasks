@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.20.0)
 
 cmake_minimum_required(VERSION 3.20.0)
 
-# IMPORTANT Switch toolchain 
+# IMPORTANT Switch toolchain
 set(ZEPHYR_TOOLCHAIN_VARIANT "espressif")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # set board variable to thingy:52
 #set(BOARD "thingy52_nrf52832")

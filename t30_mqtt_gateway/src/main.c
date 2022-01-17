@@ -21,18 +21,19 @@ void main(void)
 	{
 		k_msleep(1000);
 	}
-	
+
 	while(true)
 	{
 		if(bt_handler_fetch_data())
 		{
 			break;
 		}
-		if(mqtt_handler_publish())
+        // bt_get_temp() returns the last correct reading
+		if(mqtt_handler_publish(bt_get_temp()))
 		{
 			break;
 		}
-		k_msleep(5000);
+		k_msleep(10000);
 	}
 
 	mqtt_handler_disconnect();
