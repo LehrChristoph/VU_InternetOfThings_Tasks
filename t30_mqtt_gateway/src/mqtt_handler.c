@@ -169,6 +169,7 @@ void mqtt_evt_handler(struct mqtt_client *const client,
         }
 
         /* printk("[MQTT] Reveived: %s\nPublish Temperature ...\n", buffer); */
+        printk("[MQTT] Reveived: %s\n", buffer);
 
         // publish temperature if we receive something on the sub-topic
         // TODO: Publish TEMP
