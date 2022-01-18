@@ -55,6 +55,7 @@ void wifi_handler_connect(bool wait_for_connection)
 {
 	struct net_if *iface;
     connected =0;
+	printk("Initiating Wifi connection\n");
 	net_mgmt_init_event_callback(&dhcp_cb, handler_cb,
 				     NET_EVENT_IPV4_DHCP_BOUND);
 
@@ -87,11 +88,11 @@ void wifi_handler_connect(bool wait_for_connection)
 
     if(wait_for_connection)
     {    
-        LOG_INF("Waiting for Wifi connection\n");
+        printk("Waiting for Wifi connection\n");
         while(connected == 0)
         {
             k_msleep(1000);
         }
-        LOG_INF("Wifi Connected\n");
+        printk("Wifi Connected\n");
     }
 }
