@@ -28,21 +28,33 @@ void main(void)
 
 	while(true)
 	{
-		if(bt_handler_fetch_data())
-		{
-			break;
-		}
         // bt_get_temp() returns the last correct reading
-		if(mqtt_handler_publish(bt_get_temp()))
-		{
-			break;
-		}
+        if (send)
+        {
+            if(bt_handler_fetch_data())
+            {
+                break;
+            }
+            if(mqtt_handler_publish(bt_get_temp()))
+            {
+                break;
+            }
+            send = false;
+
+        }
+        else
+        {
+            if (mqtt_handler_keep_alive())
+            {
+                break;
+            }
+        }
 		/* k_msleep(10000); */
+
         uint64_t start = k_uptime_get();
-        while (k_uptime_get() - start < 5000 && !send)
+        while (k_uptime_get() - start < 1000 && !send)
         {
         }
-        send = false;
 	}
 
 	mqtt_handler_disconnect();

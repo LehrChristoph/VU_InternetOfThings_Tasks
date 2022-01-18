@@ -418,6 +418,21 @@ int mqtt_handler_publish(double temp)
 	return rc;
 }
 
+int mqtt_handler_keep_alive()
+{
+    int rc;
+
+	rc = mqtt_ping(&client_ctx);
+	PRINT_RESULT("mqtt_ping", rc);
+	if (rc != 0)
+	{
+		return rc;
+	}
+
+	rc = process_mqtt_and_sleep(&client_ctx, APP_SLEEP_MSECS);
+	return rc;
+}
+
 int mqtt_handler_disconnect()
 {
 	int rc = mqtt_disconnect(&client_ctx);
