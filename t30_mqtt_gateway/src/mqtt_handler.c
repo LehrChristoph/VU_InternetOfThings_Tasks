@@ -29,6 +29,7 @@ static APP_BMEM uint8_t tx_buffer[APP_MQTT_BUFFER_SIZE];
 
 /* The mqtt client struct */
 static APP_BMEM struct mqtt_client client_ctx;
+static char clientID[MQTT_CLIENTID_TOTAL_LENGTH]; 
 
 #if defined(CONFIG_MQTT_LIB_WEBSOCKET)
 #define MQTT_LIB_WEBSOCKET_RECV_BUF_LEN 1280
@@ -260,20 +261,38 @@ static void broker_init(void)
 	zsock_inet_pton(AF_INET, SERVER_ADDR, &broker4->sin_addr);
 }
 
+static void rand_string(char *str, int start, int size)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK";
+    if (size) {
+        --size;
+        for (int n = start; n < size; n++) {
+            int key =  sys_rand32_get() % (int) (sizeof charset - 1);
+            str[n] = charset[key];
+        }
+        str[size] = '\0';
+    }
+    return ;
+}
+
 static void client_init(struct mqtt_client *client)
 {
 	mqtt_client_init(client);
 
 	broker_init();
+	memcpy(clientID, MQTT_CLIENTID, MQTT_CLIENTID_STRLENGTH);
+	rand_string(clientID, MQTT_CLIENTID_STRLENGTH, MQTT_CLIENTID_TOTAL_LENGTH-1);
+	printk("ClientID: %s\n", clientID);
 
 	/* MQTT client configuration */
 	client->broker = &broker;
 	client->evt_cb = mqtt_evt_handler;
-	client->client_id.utf8 = (uint8_t *)MQTT_CLIENTID;
-	client->client_id.size = strlen(MQTT_CLIENTID);
+	client->client_id.utf8 = (uint8_t *)clientID;
+	client->client_id.size = strlen(clientID);
 	client->password = NULL;
 	client->user_name = NULL;
 	client->protocol_version = MQTT_VERSION_3_1_1;
+
 
 	/* MQTT buffers configuration */
 	client->rx_buf = rx_buffer;
