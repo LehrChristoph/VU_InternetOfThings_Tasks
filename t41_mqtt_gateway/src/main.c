@@ -26,7 +26,7 @@ void main(void)
     bool send = false;
     mqtt_set_send(&send);
 
-    unsigned int sampling_interval=10000;
+    unsigned int sampling_interval=1000;
     uint64_t last_sample_sent = k_uptime_get();
 	while(true)
 	{

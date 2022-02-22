@@ -29,7 +29,7 @@ static APP_BMEM uint8_t tx_buffer[APP_MQTT_BUFFER_SIZE];
 
 /* The mqtt client struct */
 static APP_BMEM struct mqtt_client client_ctx;
-static char clientID[MQTT_CLIENTID_TOTAL_LENGTH]; 
+static char clientID[MQTT_CLIENTID_TOTAL_LENGTH];
 
 #if defined(CONFIG_MQTT_LIB_WEBSOCKET)
 #define MQTT_LIB_WEBSOCKET_RECV_BUF_LEN 1280
@@ -226,7 +226,7 @@ static int sub_topic(struct mqtt_client *client, enum mqtt_qos qos)
     struct mqtt_subscription_list subscription_list = {
         .list = &topic,
         .list_count = 1,
-        .message_id = 1 // ???
+        .message_id = sys_rand32_get()
     };
 
     return mqtt_subscribe(client, &subscription_list);
@@ -281,7 +281,7 @@ static void client_init(struct mqtt_client *client)
 
 	broker_init();
 	memcpy(clientID, MQTT_CLIENTID, MQTT_CLIENTID_STRLENGTH);
-	rand_string(clientID, MQTT_CLIENTID_STRLENGTH, MQTT_CLIENTID_TOTAL_LENGTH-1);
+	/* rand_string(clientID, MQTT_CLIENTID_STRLENGTH, MQTT_CLIENTID_TOTAL_LENGTH-1); */
 	printk("ClientID: %s\n", clientID);
 
 	/* MQTT client configuration */
@@ -291,6 +291,8 @@ static void client_init(struct mqtt_client *client)
 	client->client_id.size = strlen(clientID);
 	client->password = NULL;
 	client->user_name = NULL;
+  /* client->user_name->utf8 = "Thingy52"; */
+  /* client->user_name->size = sizeof("Thingy52"); */
 	client->protocol_version = MQTT_VERSION_3_1_1;
 
 
